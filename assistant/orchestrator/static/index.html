@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronk</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --bg2: #171b24;
+    --bg3: #1e2330;
+    --border: #2a3044;
+    --text: #e8eaf0;
+    --text2: #9ba3bc;
+    --text3: #5c6480;
+    --green: #1fa876;
+    --blue: #3b82f6;
+    --user-bubble: #1e2d4a;
+    --kronk-bubble: #1a1f2e;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .kronk-name {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  .status-dot.offline { background: var(--text3); }
+
+  .clear-btn {
+    font-size: 12px;
+    color: var(--text3);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .clear-btn:hover { color: var(--text2); border-color: var(--text3); }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .message {
+    display: flex;
+    flex-direction: column;
+    max-width: 75%;
+    gap: 4px;
+  }
+
+  .message.user { align-self: flex-end; align-items: flex-end; }
+  .message.assistant { align-self: flex-start; align-items: flex-start; }
+
+  .bubble {
+    padding: 0.65rem 0.95rem;
+    border-radius: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .message.user .bubble {
+    background: var(--user-bubble);
+    border: 1px solid #2a3a5e;
+    border-bottom-right-radius: 3px;
+  }
+
+  .message.assistant .bubble {
+    background: var(--kronk-bubble);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 3px;
+  }
+
+  .label {
+    font-size: 11px;
+    color: var(--text3);
+    padding: 0 4px;
+  }
+
+  .bubble pre {
+    background: #0a0d14;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .bubble pre:first-child { margin-top: 0; }
+  .bubble pre:last-child  { margin-bottom: 0; }
+
+  .bubble code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 13px;
+    background: #0a0d14;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  .bubble pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .code-lang {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+
+  .stage-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text3);
+    padding: 0 4px;
+    height: 16px;
+  }
+
+  .stage-spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--border);
+    border-top-color: var(--text3);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .stage-label {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    letter-spacing: 0.02em;
+  }
+
+  .timing-toggle {
+    font-size: 11px;
+    color: var(--text3);
+    padding: 0 4px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: inherit;
+    text-align: left;
+  }
+
+  .timing-toggle:hover { color: var(--text2); }
+
+  .timing-breakdown {
+    display: none;
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    padding: 4px 4px 0;
+    line-height: 1.8;
+  }
+
+  .timing-breakdown.visible { display: block; }
+
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--text2);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 0.8s step-end infinite;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text3);
+    font-size: 14px;
+  }
+
+  footer {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+
+  #input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    padding: 0.6rem 0.9rem;
+    resize: none;
+    min-height: 42px;
+    max-height: 160px;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  #input:focus { border-color: var(--blue); }
+  #input::placeholder { color: var(--text3); }
+
+  .send-btn, .mic-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--text2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .send-btn:hover:not(:disabled) { background: var(--blue); color: white; border-color: var(--blue); }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .mic-btn {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="status-dot" id="status-dot"></div>
+    <span class="kronk-name">Kronk</span>
+  </div>
+  <button class="clear-btn" onclick="clearHistory()">clear history</button>
+</header>
+
+<div id="messages">
+  <div class="empty-state" id="empty-state">Send a message to start talking to Kronk.</div>
+</div>
+
+<footer>
+  <textarea id="input" placeholder="Message Kronk..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+  <button class="send-btn" id="send-btn" onclick="sendMessage()">
+    <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+  </button>
+  <button class="mic-btn" title="Voice input (coming soon)">
+    <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+  </button>
+</footer>
+
+<script>
+  let isStreaming = false;
+
+  async function checkHealth() {
+    try {
+      const r = await fetch('/health');
+      document.getElementById('status-dot').classList.toggle('offline', !r.ok);
+    } catch {
+      document.getElementById('status-dot').classList.add('offline');
+    }
+  }
+
+  checkHealth();
+  setInterval(checkHealth, 15000);
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderMarkdown(text) {
+    // Fenced code blocks: ```lang\ncode\n```
+    let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      const langLabel = lang ? `<span class="code-lang">${escapeHtml(lang)}</span>` : '';
+      return `<pre>${langLabel}<code>${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`;
+    });
+    // Inline code: `foo`
+    html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`);
+    // Paragraphs: split on double newlines, wrap non-pre blocks in <p>
+    html = html.split(/\n{2,}/).map(block => {
+      if (block.startsWith('<pre')) return block;
+      const inner = block.replace(/\n/g, '<br>');
+      return `<p>${inner}</p>`;
+    }).join('');
+    return html;
+  }
+
+  const stageLabels = {
+    waiting:    'waiting for Kronk...',
+    generating: 'generating...',
+    routing:    'routing...',
+    fetching:   'fetching...',
+    speaking:   'speaking...',
+  };
+
+  function addMessage(role, text) {
+    document.getElementById('empty-state')?.remove();
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = `message ${role}`;
+    div.innerHTML = `
+      <span class="label">${role === 'user' ? 'you' : 'kronk'}</span>
+      <div class="bubble"></div>
+    `;
+    div.querySelector('.bubble').textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+  }
+
+  function setStage(messageDiv, stage) {
+    let indicator = messageDiv.querySelector('.stage-indicator');
+    if (!stage) {
+      indicator?.remove();
+      return;
+    }
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'stage-indicator';
+      const label = messageDiv.querySelector('.label');
+      label.insertAdjacentElement('afterend', indicator);
+    }
+    indicator.innerHTML = `
+      <div class="stage-spinner"></div>
+      <span class="stage-label">${stageLabels[stage] ?? stage}</span>
+    `;
+  }
+
+  async function sendMessage() {
+    if (isStreaming) return;
+    const input = document.getElementById('input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    input.style.height = 'auto';
+    document.getElementById('send-btn').disabled = true;
+    isStreaming = true;
+
+    addMessage('user', text);
+    const messageDiv = addMessage('assistant', '');
+    const bubble = messageDiv.querySelector('.bubble');
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    bubble.appendChild(cursor);
+
+    let fullText = '';
+    let timingData = null;
+
+    try {
+      const resp = await fetch('/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let done = false;
+
+      while (!done) {
+        const { done: streamDone, value } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (payload === '[DONE]') { done = true; break; }
+          try {
+            const data = JSON.parse(payload);
+            if (data.stage) {
+              setStage(messageDiv, data.stage);
+            }
+            if (data.timing) {
+              timingData = data.timing;
+            }
+            if (data.token) {
+              setStage(messageDiv, null);
+              fullText += data.token;
+              cursor.remove();
+              bubble.textContent = fullText;
+              bubble.appendChild(cursor);
+              document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+            }
+          } catch {}
+        }
+      }
+
+      // Render markdown once streaming is complete
+      if (fullText) {
+        cursor.remove();
+        bubble.innerHTML = renderMarkdown(fullText);
+      }
+
+      // Attach timing toggle if we have data
+      if (timingData) {
+        const rows = [];
+        if (timingData.fetch_s != null)      rows.push(`tool call   ${timingData.fetch_s}s`);
+        if (timingData.ttft_s != null)       rows.push(`first token ${timingData.ttft_s}s`);
+        if (timingData.generation_s != null) rows.push(`generation  ${timingData.generation_s}s`);
+        if (rows.length) {
+          const toggle = document.createElement('button');
+          toggle.className = 'timing-toggle';
+          toggle.textContent = '· timing';
+          const breakdown = document.createElement('div');
+          breakdown.className = 'timing-breakdown';
+          breakdown.textContent = rows.join('\n');
+          toggle.addEventListener('click', () => breakdown.classList.toggle('visible'));
+          messageDiv.appendChild(toggle);
+          messageDiv.appendChild(breakdown);
+        }
+      }
+    } catch (e) {
+
+      setStage(messageDiv, null);
+      bubble.textContent = 'Error: could not reach Kronk.';
+    } finally {
+      setStage(messageDiv, null);
+      cursor.remove();
+      isStreaming = false;
+      document.getElementById('send-btn').disabled = false;
+      input.focus();
+    }
+  }
+
+  async function clearHistory() {
+    await fetch('/history', { method: 'DELETE' });
+    const container = document.getElementById('messages');
+    container.innerHTML = '<div class="empty-state" id="empty-state">Send a message to start talking to Kronk.</div>';
+  }
+</script>
+</body>
+</html>

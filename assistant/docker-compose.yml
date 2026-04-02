@@ -1,0 +1,27 @@
+services:
+  tool_service:
+    build: ./tool_service
+    network_mode: host
+    restart: unless-stopped
+
+  llm_service:
+    build: ./llm_service
+    network_mode: host
+    environment:
+      - OLLAMA_URL=http://localhost:11434
+      - DEFAULT_MODEL=qwen3:14b
+    restart: unless-stopped
+
+  orchestrator:
+    build: ./orchestrator
+    network_mode: host
+    environment:
+      - LLM_SERVICE_URL=http://localhost:8002
+      - TOOL_SERVICE_URL=http://localhost:8003
+      - MODEL_NAME=qwen3:14b
+      - LOCATION=Laurel, MD
+      - SYSTEM_PROMPT=You are Kronk, a helpful home assistant. Be direct and concise. Do not use action text, emotes, or filler expressions like *winks*, *laughs*, or *grins*. Do not use theatrical language. Answer questions factually and helpfully.
+    depends_on:
+      - llm_service
+      - tool_service
+    restart: unless-stopped
