@@ -1,6 +1,6 @@
 # Kronk AI Server — Build Notes & Model Analysis
 
-**Last updated:** 2026-04-02
+**Last updated:** 2026-04-03 (supply chain hardening)
 **Machine:** Framework AMD Ryzen AI 375 (hostname: kronk)
 **GPU:** Radeon 8060S (GFX1151) — integrated GPU
 **RAM:** 122 GB
@@ -9,9 +9,44 @@
 
 ## Hardware Reality
 
-The Radeon 8060S is an integrated GPU — it has no dedicated VRAM. Instead it carves memory out of system RAM via a mechanism called GTT (Graphics Translation Table). Ollama/ROCm sees this as ~61.9 GiB of "GPU memory." With 122 GB total system RAM, roughly half is available to the GPU.
+The Radeon 8060S is an integrated GPU — it has no dedicated VRAM. Instead it carves memory out of system RAM via a mechanism called GTT (Graphics Translation Table). Ollama/ROCm initially saw ~61.9 GiB of "GPU memory" — the ROCm driver default of roughly half of total system RAM.
 
-This is the fundamental constraint everything else flows from.
+The GTT ceiling has since been raised to **~101.6 GB** (see below).
+
+### Raising the GTT ceiling
+
+The default ~50% limit is a driver policy, not a hardware constraint. It can be raised via kernel boot parameters.
+
+**What does NOT work:**
+- `amdgpu.gttsize` — deprecated, throws a kernel warning, ignored on modern kernels
+- `amdttm.pages_limit` — the module is named `ttm`, not `amdttm`; this parameter is silently ignored
+
+**What works (kernel 6.17+):**
+```
+ttm.pages_limit=VALUE
+ttm.page_pool_size=VALUE
+```
+
+Set in `/etc/default/grub`:
+```
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash ttm.pages_limit=26624000 ttm.page_pool_size=26624000"
+```
+
+Then `sudo update-grub` and reboot.
+
+**Value calculation:** `([size in GB] * 1024 * 1024) / 4.096`
+- 104 GB → `26624000` (what we used — results in ~101.6 GB after driver rounding)
+- 108 GB → `27648000` (Jeff Geerling's tested maximum on identical silicon before segfaults)
+
+**Verify after reboot:**
+```bash
+awk '{printf "%.1f GB\n", $1/1024/1024/1024}' /sys/class/drm/card1/device/mem_info_gtt_total
+cat /sys/module/ttm/parameters/pages_limit
+```
+
+**Safety ceiling:** Do not exceed 108 GB (~27648000). Jeff Geerling confirmed 110 GB causes segfaults on the same Strix Halo silicon (AI Max+ 395 / Radeon 890M, GFX1151).
+
+**GTT is dynamic:** Allocations are not permanently reserved — the OS can reclaim GTT memory when the GPU isn't using it. Raising the ceiling does not reduce available system RAM at idle.
 
 ---
 
@@ -47,10 +82,94 @@ Tradeoff: `network_mode: host` only works on Linux (not Mac/Windows Docker Deskt
 ### Service design
 - **llm_service** (port 8002): thin Ollama wrapper. Translates the orchestrator's message format into Ollama's API format and streams tokens back as SSE. Keeping this separate means swapping out the LLM backend only touches this service.
 - **orchestrator** (port 8000): manages conversation history, serves the UI, owns all routing logic and tool calls.
-- **tool_service** (port 8003): external API integrations. Currently weather via Open-Meteo (geocoding + forecast, no API key required).
+- **tool_service** (port 8003): external API integrations — weather, web search, URL fetch, shopping list.
+- **searxng** (port 8080): self-hosted meta-search engine. Used by tool_service for web search queries.
 
 ### Tool integration pattern
-Tool calls use rule-based intent detection (regex keyword matching) in the orchestrator rather than LLM-driven function calling. This avoids model capability variance — not all models handle function calling consistently. The orchestrator detects intent, calls the tool, injects the result as a system message, then sends the full context to the LLM. The model's job is only to format the response.
+Tool calls use rule-based intent detection (regex keyword matching) in the orchestrator rather than LLM-driven function calling. This avoids model capability variance — not all models handle function calling consistently, and adding an LLM round-trip just to decide which tool to call adds latency with no benefit when the intent patterns are straightforward. The orchestrator detects intent, calls the tool, injects the result as a system message, then sends the full context to the LLM. The model's job is only to format the response.
+
+The tradeoff: regex intent detection misses ambiguous or conversational phrasings that a function-calling model would catch. The plan is to migrate to a proper agentic loop (Option B) once the tool set is stable enough to justify it.
+
+---
+
+## Tools
+
+### Weather — National Weather Service (api.weather.gov)
+
+**Why NWS over Open-Meteo:** NWS is a US government service, free, no API key, and provides significantly richer data — named forecast periods with narrative descriptions ("patchy fog before 8am"), hourly breakdowns, and active weather alerts. Open-Meteo gives a snapshot; NWS gives a story.
+
+**Two-step flow:**
+1. Geocode via Open-Meteo (NWS has no geocoder) to get lat/lon
+2. `GET /points/{lat},{lon}` → NWS grid assignment → parallel fetch of hourly forecast, named periods, and alerts via `asyncio.gather()`
+
+**US-only limitation and fallback:** NWS only covers US locations. When it returns non-200, the pipeline doesn't fail silently — it falls back to a web search for "current weather [location]". The model is told explicitly that the data came from web search, not a live feed. If both fail, the model is told to say so rather than guess.
+
+**Keep Open-Meteo for geocoding:** NWS provides no location lookup. Open-Meteo's geocoding API is free, returns results in a consistent format, and works globally — keeping it for this step is the right call.
+
+### Web Search — SearXNG (self-hosted)
+
+**Why self-hosted:** Privacy was the primary driver. A home assistant that sends every query to Google or Bing defeats the point of running locally. SearXNG is a meta-search engine — it queries multiple sources on your behalf and returns aggregated results. Queries never leave the house.
+
+**Why SearXNG over a search API:** No API key, no rate limits, no cost. The tradeoff is result quality can vary vs. a dedicated paid API, but for a home assistant context it's more than adequate.
+
+**Snippet-only approach:** Search results are injected as title + URL + snippet, not full page content. This keeps context size small. If the model or user needs the full article, a URL can be passed to the fetch tool for a deep dive.
+
+### URL Fetch
+
+Fetches a URL, strips boilerplate (nav, header, footer, scripts) with BeautifulSoup, collapses whitespace, and truncates to ~1,500 tokens (~6,000 chars). This keeps the context injection from blowing up the context window on long pages.
+
+**`verify=False` on httpx:** SSL certificate verification fails inside the container even after installing `ca-certificates` and `certifi`. The failure is an intermediate CA gap in the container environment, not a problem with the target sites. Since this is a read-only fetch for a home assistant, `verify=False` is an acceptable tradeoff. Only the fetch endpoint uses it.
+
+### Shopping List
+
+JSON file persistence at `/data/shopping_list.json` via a Docker volume mount. No database — a JSON file is sufficient for a personal shopping list and survives container restarts. CRUD via natural language: add, remove, view, clear.
+
+Includes a mobile-friendly web page at `/shopping_list` (served by the orchestrator) with a dark theme and 30-second auto-refresh, so a phone can be used as a read-only view at the store without needing to talk to Kronk.
+
+### File Upload
+
+PDF and plain text files can be attached and injected as system messages on every request in the session. Token count is estimated and displayed per file; a warning is shown when total attached context exceeds ~2,000 tokens.
+
+---
+
+## Pipeline Reliability
+
+### Hallucination guardrails
+
+Early testing showed the model would fabricate data when tools failed. Asking about Madrid weather returned "as of my latest training data, the weather in Madrid is..." — confidently wrong. Three layers of guardrails were added, and the order matters:
+
+1. **System prompt standing rule** — "Never fabricate real-time information. If no tool data is present, say so." This is the backstop for cases the pipeline doesn't anticipate.
+
+2. **Directive failure messages** — When a tool fails, the pipeline injects a system message with explicit `MUST NOT answer from training data` language, not a soft suggestion. Models are better at following explicit prohibitions than inferring them from absence.
+
+3. **Structural tool status lines** — Every tool result (success or failure) is prefixed with `[TOOL: weather — live NWS data]` or `[TOOL: weather — FAILED]`. The model always sees explicit state rather than having to infer it from context. This is the most reliable layer because it's structural, not instructional.
+
+A single layer isn't enough. The system prompt rule is too easy to rationalize around. The failure message alone can be overridden by the model's helpful instinct. The status lines close the gap by making the tool state unambiguous in the prompt.
+
+### Pipeline stages and timing
+
+The timing model was initially a single slot — one `fetch_tool` variable and one timestamp. This was wrong: when the weather tool failed and search ran as a fallback, the weather attempt was overwritten and disappeared from the timing display.
+
+Replaced with a `stages` list. Each tool attempt appends `{tool, duration_s, ok}` to the list when it completes. The timing event sends the full list. Benefits:
+- Every attempt is recorded, including partial failures
+- Failed stages are visually distinct (shown in red) in the UI
+- New tools automatically appear in timing without any extra wiring
+
+---
+
+## UI
+
+### Streaming and markdown rendering
+
+Tokens are streamed and appended to the bubble as plain text during generation. When `[DONE]` is received, the completed text is run through a markdown renderer that converts fenced code blocks, inline code, and `[text](url)` links to HTML. Links open in a new tab with `rel="noopener noreferrer"`.
+
+**Why render on completion, not per-token:** Running the markdown parser on a partial stream causes flickering — a half-written `[link](` gets rendered incorrectly mid-stream, then corrected. For typical response lengths, the snap to rendered markdown at the end of generation is imperceptible.
+
+**No external library:** The renderer is ~15 lines of regex + string manipulation. It covers the patterns Kronk actually produces (code blocks, inline code, links). A full markdown library would handle more edge cases but adds an external CDN dependency for minimal practical gain.
+
+### Stage indicators
+
+Each tool call emits a stage event (`fetching_weather`, `fetching_search`, `fetching_url`, `fetching`) before the async work begins. The UI shows a spinner with a label so the user knows what the pipeline is doing during the fetch phase. The stage is cleared when the first token arrives.
 
 ---
 
@@ -161,11 +280,74 @@ If 14B feels slow in daily use, llama3.1:8b is the best smaller option. Meta bui
 
 ---
 
+## Supply Chain Security
+
+### The threat model
+
+A supply chain attack on a Python project works like this: a malicious package (either a typosquat, a compromised legitimate package, or a malicious transitive dependency) runs arbitrary code at install time or import time. The litellm incident demonstrated that such packages actively scrape `os.environ` and the filesystem for credentials, then exfiltrate them over HTTP.
+
+The naive setup — credentials in environment variables, `pip install -r requirements.txt` — is fully vulnerable. Any package in the dependency tree can steal everything.
+
+### Defense 1: Dependency hash pinning (highest leverage)
+
+This stops the attack before any code runs. Every dependency is pinned to an exact content hash. If a malicious actor swaps in a compromised version of a package, the hash won't match and the install fails.
+
+**How it works:**
+- `requirements.txt` lists direct dependencies with loose version constraints (human-maintained)
+- `requirements.lock` is machine-generated and contains every resolved transitive dependency with SHA-256 hashes of the exact distributions
+- Docker builds install from the lockfile with `--require-hashes`, which fails if any hash mismatches
+
+**Generating / updating lockfiles:**
+```bash
+# Run inside a container to match the exact linux/amd64 environment
+docker run --rm -v ./tool_service:/svc python:3.12-slim \
+  bash -c "pip install uv -q && uv pip compile /svc/requirements.txt --generate-hashes -o /svc/requirements.lock"
+```
+
+Repeat for each service directory. Commit the lockfile. When you update a direct dependency in `requirements.txt`, regenerate the lockfile.
+
+**Why this is the primary defense:** An attacker can't substitute a package because the hash won't match. They would need to compromise PyPI's distribution infrastructure itself, not just upload a malicious package.
+
+### Defense 2: age encryption for credentials at rest
+
+Docker secrets (mounting a file at `/run/secrets/`) are better than environment variables for container inspection and accidental logging, but they do not protect against a malicious package that actively reads files. The path `/run/secrets/` is well-known; any code running in the container can open and read it.
+
+`age` is a small, audited encryption tool. The credentials file on disk is ciphertext. A filesystem scraper gets an encrypted blob — useless without the key. The plaintext only ever exists in memory, for the duration of the sync call.
+
+**Key architecture:**
+- `secrets/garmin.json.age` — encrypted credentials (ciphertext, mounted as Docker secret)
+- `secrets/age.key` — age private key (mounted as separate Docker secret)
+- The two files are only useful together; separating them at different paths raises the bar for an attacker who needs to find and correlate both
+
+**Why not passphrase-based age?** Passphrase encryption requires an interactive prompt on every container start. Not practical for an automated sync service. A key file stored with restricted permissions (`chmod 600`) is the right tradeoff for a home server.
+
+### What this does NOT fully protect against
+
+If a malicious package runs inside the container after the application has already decrypted credentials into memory (e.g., stored in a Python variable), a sufficiently advanced attack could read `/proc/self/mem` or use other process-introspection techniques to find the plaintext. Full protection against this class of attack requires process isolation that Python cannot provide.
+
+The realistic defense is: hash pinning prevents the malicious package from being installed. Encryption at rest limits damage if the package somehow runs anyway (e.g., via a 0-day in the package resolution). The combination is appropriate for a home server threat model.
+
+### Maintaining the lockfiles
+
+Lockfiles go stale when you update dependencies. The workflow:
+1. Edit `requirements.txt` with the new/updated dependency
+2. Regenerate the lockfile with the docker command above
+3. Rebuild the container — `--require-hashes` will verify the new lockfile
+4. Commit both `requirements.txt` and `requirements.lock`
+
+Never edit the lockfile by hand. Never skip the lockfile and install from `requirements.txt` directly in production.
+
+### .gitignore
+
+The `secrets/` directory is in `.gitignore`. The age key and both plaintext and encrypted credential files must never be committed. If they are accidentally committed, rotate the credentials immediately.
+
+---
+
 ## What's Still on the Table
 
-- **Switch to qwen2.5:14b** — one-line change in `docker-compose.yml`, benchmark strongly supports it
+- **Agentic loop (Option B)** — The current regex intent detection is a stepping stone. The intended architecture is an LLM-driven agentic loop where the model decides which tools to call and can chain them. The regex approach was built first to get something working; the tool set is now stable enough to justify the upgrade.
 - **Query routing** — route simple/fast queries to a small model, complex ones to a larger one; architecture already supports this via the `model` override on `/message`
 - **Quantization** — a Q2/Q3 version of llama3.3:70b would be ~25-30 GB and might fit in GPU at 100% while retaining more quality than 14B models
-- **File context** — allow attaching files to prompts for additional context (planned)
 - **Voice pipeline** — STT (Whisper.cpp), TTS (Piper), wake word (openWakeWord); stubbed in the current UI
 - **More tools** — Philips Hue, calendar, home automation
+- **External shopping list** — publish the shopping list page externally (GitHub Pages / Cloudflare Pages) so it's accessible without being on the home network

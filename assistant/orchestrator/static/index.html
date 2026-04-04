@@ -204,14 +204,28 @@
 
   .timing-breakdown {
     display: none;
-    font-size: 11px;
-    color: var(--text3);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    flex-direction: column;
+    gap: 2px;
     padding: 4px 4px 0;
-    line-height: 1.8;
   }
 
-  .timing-breakdown.visible { display: block; }
+  .timing-breakdown.visible { display: flex; }
+
+  .timing-row {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--text3);
+    line-height: 1.6;
+  }
+
+  .timing-row .t-label { min-width: 100px; }
+  .timing-row .t-value { color: var(--text2); }
+  .timing-row .t-fail { color: #c0392b; }
+
+  .bubble a { color: var(--blue); text-decoration: none; }
+  .bubble a:hover { text-decoration: underline; }
 
   .cursor {
     display: inline-block;
@@ -282,10 +296,69 @@
   .send-btn:hover:not(:disabled) { background: var(--blue); color: white; border-color: var(--blue); }
   .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .mic-btn {
-    opacity: 0.35;
-    cursor: not-allowed;
+  .attach-btn {
+    position: relative;
   }
+
+  .attach-btn input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .file-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0.5rem 1.25rem 0;
+    background: var(--bg2);
+  }
+
+  .file-chips:empty {
+    display: none;
+  }
+
+  .file-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--text2);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  .file-chip.warning {
+    border-color: #7c5c1e;
+    color: #d4a030;
+  }
+
+  .chip-remove {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .chip-remove:hover { color: var(--text); }
+
+  .token-warning {
+    font-size: 11px;
+    color: #d4a030;
+    padding: 0.25rem 1.25rem 0;
+    background: var(--bg2);
+  }
+
+  .token-warning:empty { display: none; }
 
   svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 </style>
@@ -304,13 +377,16 @@
   <div class="empty-state" id="empty-state">Send a message to start talking to Kronk.</div>
 </div>
 
+<div class="file-chips" id="file-chips"></div>
+<div class="token-warning" id="token-warning"></div>
 <footer>
   <textarea id="input" placeholder="Message Kronk..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
   <button class="send-btn" id="send-btn" onclick="sendMessage()">
     <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
   </button>
-  <button class="mic-btn" title="Voice input (coming soon)">
-    <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+  <button class="send-btn attach-btn" title="Attach file">
+    <svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+    <input type="file" id="file-input" accept=".pdf,.txt,.md,.py,.js,.ts,.json,.yaml,.yml,.csv" multiple onchange="handleFileUpload(event)">
   </button>
 </footer>
 
@@ -357,6 +433,10 @@
     });
     // Inline code: `foo`
     html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`);
+    // Markdown links: [text](url) — processed after code to avoid matching inside code blocks
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, linkText, url) =>
+      `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(linkText)}</a>`
+    );
     // Paragraphs: split on double newlines, wrap non-pre blocks in <p>
     html = html.split(/\n{2,}/).map(block => {
       if (block.startsWith('<pre')) return block;
@@ -367,11 +447,14 @@
   }
 
   const stageLabels = {
-    waiting:    'waiting for Kronk...',
-    generating: 'generating...',
-    routing:    'routing...',
-    fetching:   'fetching...',
-    speaking:   'speaking...',
+    waiting:          'waiting for Kronk...',
+    generating:       'generating...',
+    routing:          'routing...',
+    fetching_weather: 'fetching weather...',
+    fetching_search:  'searching the web...',
+    fetching_url:     'reading page...',
+    fetching:         'updating list...',
+    speaking:         'speaking...',
   };
 
   function addMessage(role, text) {
@@ -478,17 +561,27 @@
 
       // Attach timing toggle if we have data
       if (timingData) {
+        const toolLabels = { weather: 'weather', search: 'web search', url: 'page fetch', list: 'shopping list' };
         const rows = [];
-        if (timingData.fetch_s != null)      rows.push(`tool call   ${timingData.fetch_s}s`);
-        if (timingData.ttft_s != null)       rows.push(`first token ${timingData.ttft_s}s`);
-        if (timingData.generation_s != null) rows.push(`generation  ${timingData.generation_s}s`);
+        for (const stage of (timingData.stages || [])) {
+          const label = toolLabels[stage.tool] || stage.tool;
+          rows.push({ label, value: `${stage.s}s`, ok: stage.ok });
+        }
+        if (timingData.ttft_s != null)       rows.push({ label: 'first token', value: `${timingData.ttft_s}s`, ok: true });
+        if (timingData.generation_s != null) rows.push({ label: 'generation',  value: `${timingData.generation_s}s`, ok: true });
         if (rows.length) {
           const toggle = document.createElement('button');
           toggle.className = 'timing-toggle';
           toggle.textContent = '· timing';
           const breakdown = document.createElement('div');
           breakdown.className = 'timing-breakdown';
-          breakdown.textContent = rows.join('\n');
+          for (const { label, value, ok } of rows) {
+            const row = document.createElement('div');
+            row.className = 'timing-row';
+            const valueClass = ok ? 't-value' : 't-fail';
+            row.innerHTML = `<span class="t-label">${label}</span><span class="${valueClass}">${value}</span>`;
+            breakdown.appendChild(row);
+          }
           toggle.addEventListener('click', () => breakdown.classList.toggle('visible'));
           messageDiv.appendChild(toggle);
           messageDiv.appendChild(breakdown);
@@ -511,6 +604,55 @@
     await fetch('/history', { method: 'DELETE' });
     const container = document.getElementById('messages');
     container.innerHTML = '<div class="empty-state" id="empty-state">Send a message to start talking to Kronk.</div>';
+    document.getElementById('file-chips').innerHTML = '';
+    document.getElementById('token-warning').textContent = '';
+  }
+
+  async function handleFileUpload(event) {
+    const files = Array.from(event.target.files);
+    event.target.value = '';
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const resp = await fetch('/files', { method: 'POST', body: formData });
+        if (!resp.ok) {
+          const err = await resp.json();
+          alert(`Could not attach ${file.name}: ${err.detail}`);
+          continue;
+        }
+        const result = await resp.json();
+        renderFileChips(result.warning);
+      } catch {
+        alert(`Failed to upload ${file.name}`);
+      }
+    }
+  }
+
+  async function removeFile(filename) {
+    await fetch(`/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    renderFileChips();
+  }
+
+  async function renderFileChips(warn) {
+    const resp = await fetch('/files');
+    const data = await resp.json();
+    const chips = document.getElementById('file-chips');
+    const warning = document.getElementById('token-warning');
+    chips.innerHTML = '';
+    for (const f of data.files) {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip' + (data.warning ? ' warning' : '');
+      chip.innerHTML = `
+        <span>${escapeHtml(f.name)}</span>
+        <span style="color:var(--text3)">~${f.tokens} tok</span>
+        <button class="chip-remove" onclick="removeFile('${escapeHtml(f.name)}')" title="Remove">×</button>
+      `;
+      chips.appendChild(chip);
+    }
+    warning.textContent = data.warning
+      ? `⚠ ~${data.total_tokens} tokens in attached files — context window may fill up`
+      : '';
   }
 </script>
 </body>

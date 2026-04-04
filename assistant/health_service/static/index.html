@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronk Health</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+        integrity="sha512-ZwR1/gSZM3ai6vCdI+LVF1zSq/5HznD3oD+sCoJrzXJ+yKigrMsAr4M2u3Yxz5ndqR3eFi+aWiH8XRHlHUQQ=="
+        crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:     #0f1117;
+    --bg2:    #171b24;
+    --bg3:    #1e2330;
+    --border: #2a3044;
+    --text:   #e8eaf0;
+    --text2:  #9ba3bc;
+    --text3:  #5c6480;
+    --green:  #1fa876;
+    --blue:   #3b82f6;
+    --purple: #8b5cf6;
+    --amber:  #f59e0b;
+    --red:    #ef4444;
+    --indigo: #6366f1;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────────────── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.9rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .header-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  h1 { font-size: 16px; font-weight: 600; }
+
+  .sync-status {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .sync-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text2);
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .sync-btn:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .sync-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Layout ──────────────────────────────────────────────────────────── */
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  /* ── Metric strip ────────────────────────────────────────────────────── */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+  }
+
+  @media (max-width: 900px) { .metrics { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 560px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+
+  .metric-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .metric-label {
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-unit {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text2);
+    margin-left: 3px;
+  }
+
+  .metric-sub {
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  .metric-bar {
+    height: 3px;
+    background: var(--bg3);
+    border-radius: 99px;
+    margin-top: 2px;
+    overflow: hidden;
+  }
+
+  .metric-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.6s ease;
+  }
+
+  /* ── Chart grid ──────────────────────────────────────────────────────── */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  @media (max-width: 760px) { .chart-grid { grid-template-columns: 1fr; } }
+
+  .chart-grid.wide { grid-template-columns: 2fr 1fr; }
+  @media (max-width: 900px) { .chart-grid.wide { grid-template-columns: 1fr; } }
+
+  /* ── Card ────────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.1rem 1.25rem;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text2);
+  }
+
+  .card-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .badge-balanced { background: rgba(31,168,118,0.15); color: var(--green); }
+  .badge-low      { background: rgba(239,68,68,0.15);  color: var(--red);   }
+  .badge-unbalanced { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+  .chart-wrap { position: relative; }
+
+  /* ── Sleep stages bar ────────────────────────────────────────────────── */
+  .sleep-stages {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .stage-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .stage-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .stage-name { width: 44px; font-size: 12px; color: var(--text2); }
+
+  .stage-track {
+    flex: 1;
+    height: 6px;
+    background: var(--bg3);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .stage-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.6s ease;
+  }
+
+  .stage-pct { font-size: 11px; color: var(--text3); width: 30px; text-align: right;
+               font-family: 'JetBrains Mono', monospace; }
+
+  /* ── HRV baseline band label ─────────────────────────────────────────── */
+  .hrv-baseline-label {
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 6px;
+  }
+
+  /* ── Activities ──────────────────────────────────────────────────────── */
+  .activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .activity-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.65rem 0.9rem;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+  }
+
+  .activity-icon {
+    font-size: 18px;
+    width: 28px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .activity-name { font-size: 13px; font-weight: 500; flex: 1; }
+  .activity-meta { font-size: 11px; color: var(--text3); }
+  .activity-stats {
+    display: flex;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--text2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Empty / loading ─────────────────────────────────────────────────── */
+  .empty {
+    color: var(--text3);
+    font-size: 13px;
+    text-align: center;
+    padding: 2rem 0;
+  }
+
+  .no-data { color: var(--text3); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-dot" id="hdr-dot"></div>
+  <h1>Health</h1>
+  <span class="sync-status" id="sync-status">loading...</span>
+  <button class="sync-btn" id="sync-btn" onclick="triggerSync()">sync now</button>
+</header>
+
+<main>
+  <!-- Today's metrics -->
+  <div class="metrics" id="metrics">
+    <div class="metric-card" id="mc-steps">
+      <div class="metric-label">Steps</div>
+      <div class="metric-value no-data">—</div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:0%;background:var(--blue)"></div></div>
+      <div class="metric-sub">goal: 10,000</div>
+    </div>
+    <div class="metric-card" id="mc-sleep">
+      <div class="metric-label">Sleep</div>
+      <div class="metric-value no-data">—</div>
+      <div class="metric-sub no-data">last night</div>
+    </div>
+    <div class="metric-card" id="mc-battery">
+      <div class="metric-label">Body Battery</div>
+      <div class="metric-value no-data">—</div>
+      <div class="metric-bar"><div class="metric-bar-fill" style="width:0%;background:var(--green)"></div></div>
+      <div class="metric-sub no-data">current</div>
+    </div>
+    <div class="metric-card" id="mc-hr">
+      <div class="metric-label">Resting HR</div>
+      <div class="metric-value no-data">—</div>
+      <div class="metric-sub no-data">bpm</div>
+    </div>
+    <div class="metric-card" id="mc-hrv">
+      <div class="metric-label">HRV</div>
+      <div class="metric-value no-data">—</div>
+      <div class="metric-sub no-data">last night</div>
+    </div>
+  </div>
+
+  <!-- Body battery + sleep stages -->
+  <div class="chart-grid wide">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Body Battery — Today</span>
+        <span id="bb-range" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+      <div class="chart-wrap" style="height:160px">
+        <canvas id="chart-battery"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Sleep — Last Night</span>
+        <span id="sleep-score-badge" class="card-badge" style="display:none"></span>
+      </div>
+      <div class="sleep-stages" id="sleep-stages">
+        <div class="empty">no sleep data</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HRV trend + 7-day steps -->
+  <div class="chart-grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">HRV — 30 Days</span>
+        <span id="hrv-status-badge" class="card-badge" style="display:none"></span>
+      </div>
+      <div class="chart-wrap" style="height:160px">
+        <canvas id="chart-hrv"></canvas>
+      </div>
+      <div class="hrv-baseline-label" id="hrv-baseline"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Steps — 7 Days</span>
+        <span id="steps-avg" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+      <div class="chart-wrap" style="height:160px">
+        <canvas id="chart-steps"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activities -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Recent Activities</span>
+    </div>
+    <div class="activity-list" id="activity-list">
+      <div class="empty">no activities</div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── Chart.js global defaults ────────────────────────────────────────────────
+Chart.defaults.color = '#9ba3bc';
+Chart.defaults.borderColor = '#2a3044';
+Chart.defaults.font.family = "-apple-system, 'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.size = 11;
+
+const ACTIVITY_ICONS = {
+  running: '🏃', cycling: '🚴', swimming: '🏊', walking: '🚶',
+  strength_training: '🏋️', yoga: '🧘', hiking: '🥾',
+  elliptical: '⚡', lap_swimming: '🏊', open_water_swimming: '🌊',
+  trail_running: '🏃', road_biking: '🚴', indoor_cycling: '🚴',
+};
+const activityIcon = t => ACTIVITY_ICONS[t] || '⚡';
+
+const fmtDate = d => {
+  const dt = new Date(d + 'T12:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+// ── Metric cards ────────────────────────────────────────────────────────────
+function renderMetrics(summary, battery, sleep, hrv) {
+  const today = summary?.today;
+
+  // Steps
+  const steps = today?.steps;
+  const mc = document.getElementById('mc-steps');
+  if (steps != null) {
+    mc.querySelector('.metric-value').innerHTML =
+      `${steps.toLocaleString()}`;
+    mc.querySelector('.metric-value').classList.remove('no-data');
+    const pct = Math.min(100, Math.round(steps / 10000 * 100));
+    mc.querySelector('.metric-bar-fill').style.width = pct + '%';
+    mc.querySelector('.metric-sub').textContent = `${pct}% of goal`;
+  }
+
+  // Sleep
+  const lastSleep = sleep?.[0];
+  const ms = document.getElementById('mc-sleep');
+  if (lastSleep?.duration_hours) {
+    const h = Math.floor(lastSleep.duration_hours);
+    const m = Math.round((lastSleep.duration_hours - h) * 60);
+    ms.querySelector('.metric-value').innerHTML =
+      `${h}<span class="metric-unit">h</span>${m}<span class="metric-unit">m</span>`;
+    ms.querySelector('.metric-value').classList.remove('no-data');
+    ms.querySelector('.metric-sub').textContent =
+      lastSleep.score ? `score: ${lastSleep.score}` : fmtDate(lastSleep.date);
+    ms.querySelector('.metric-sub').classList.remove('no-data');
+  }
+
+  // Body battery
+  const mb = document.getElementById('mc-battery');
+  if (battery?.current != null) {
+    mb.querySelector('.metric-value').textContent = battery.current;
+    mb.querySelector('.metric-value').classList.remove('no-data');
+    mb.querySelector('.metric-bar-fill').style.width = battery.current + '%';
+    const color = battery.current > 60 ? 'var(--green)' : battery.current > 30 ? 'var(--amber)' : 'var(--red)';
+    mb.querySelector('.metric-bar-fill').style.background = color;
+    mb.querySelector('.metric-sub').textContent =
+      `high ${battery.high ?? '?'} · low ${battery.low ?? '?'}`;
+    mb.querySelector('.metric-sub').classList.remove('no-data');
+  }
+
+  // Resting HR
+  const mhr = document.getElementById('mc-hr');
+  const rhr = today?.resting_hr;
+  if (rhr) {
+    mhr.querySelector('.metric-value').innerHTML =
+      `${rhr}<span class="metric-unit">bpm</span>`;
+    mhr.querySelector('.metric-value').classList.remove('no-data');
+    const wkAvg = summary?.averages?.resting_hr;
+    mhr.querySelector('.metric-sub').textContent =
+      wkAvg ? `7-day avg: ${wkAvg}` : 'today';
+    mhr.querySelector('.metric-sub').classList.remove('no-data');
+  }
+
+  // HRV
+  const mhrv = document.getElementById('mc-hrv');
+  const latestHrv = hrv?.at(-1);
+  if (latestHrv?.last_night) {
+    mhrv.querySelector('.metric-value').textContent =
+      Math.round(latestHrv.last_night);
+    mhrv.querySelector('.metric-value').classList.remove('no-data');
+    mhrv.querySelector('.metric-sub').textContent =
+      latestHrv.status ? latestHrv.status.toLowerCase() : 'ms';
+    mhrv.querySelector('.metric-sub').classList.remove('no-data');
+  }
+}
+
+// ── Sleep stages ────────────────────────────────────────────────────────────
+function renderSleepStages(sleep) {
+  const last = sleep?.[0];
+  const el = document.getElementById('sleep-stages');
+  const badge = document.getElementById('sleep-score-badge');
+
+  if (!last || !last.duration_hours) {
+    el.innerHTML = '<div class="empty">no sleep data</div>';
+    return;
+  }
+
+  if (last.score) {
+    badge.textContent = `score ${last.score}`;
+    badge.style.display = '';
+    const cls = last.score >= 75 ? 'badge-balanced' : last.score >= 55 ? 'badge-unbalanced' : 'badge-low';
+    badge.className = `card-badge ${cls}`;
+  }
+
+  const stages = [
+    { key: 'deep',  label: 'Deep',  pct: last.deep_pct,  color: 'var(--indigo)' },
+    { key: 'rem',   label: 'REM',   pct: last.rem_pct,   color: 'var(--purple)' },
+    { key: 'light', label: 'Light', pct: last.light_pct, color: 'var(--blue)'   },
+    { key: 'awake', label: 'Awake', pct: last.awake_pct, color: 'var(--text3)'  },
+  ];
+
+  const h = Math.floor(last.duration_hours);
+  const m = Math.round((last.duration_hours - h) * 60);
+
+  el.innerHTML = `
+    <div style="font-size:22px;font-weight:700;margin-bottom:6px">
+      ${h}<span style="font-size:14px;color:var(--text2);font-weight:400">h</span>${m}<span style="font-size:14px;color:var(--text2);font-weight:400">m</span>
+    </div>
+    ${stages.map(s => `
+      <div class="stage-row">
+        <div class="stage-dot" style="background:${s.color}"></div>
+        <span class="stage-name">${s.label}</span>
+        <div class="stage-track">
+          <div class="stage-fill" style="width:${s.pct ?? 0}%;background:${s.color}"></div>
+        </div>
+        <span class="stage-pct">${s.pct ?? 0}%</span>
+      </div>
+    `).join('')}
+  `;
+}
+
+// ── Body battery chart ───────────────────────────────────────────────────────
+let chartBattery = null;
+function renderBatteryChart(battery) {
+  const ctx = document.getElementById('chart-battery').getContext('2d');
+  const curve = battery?.curve ?? [];
+
+  document.getElementById('bb-range').textContent =
+    battery?.high != null ? `high ${battery.high} · low ${battery.low}` : '';
+
+  if (chartBattery) chartBattery.destroy();
+
+  chartBattery = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: curve.map(p => p.time),
+      datasets: [{
+        data: curve.map(p => p.value),
+        borderColor: '#1fa876',
+        backgroundColor: 'rgba(31,168,118,0.12)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          min: 0, max: 100,
+          grid: { color: '#2a3044' },
+          ticks: { stepSize: 25 },
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxTicksLimit: 8,
+            maxRotation: 0,
+          }
+        }
+      }
+    }
+  });
+}
+
+// ── HRV trend chart ──────────────────────────────────────────────────────────
+let chartHrv = null;
+function renderHrvChart(hrv) {
+  const ctx = document.getElementById('chart-hrv').getContext('2d');
+  if (!hrv?.length) return;
+
+  const latest = hrv.at(-1);
+  const badge = document.getElementById('hrv-status-badge');
+  if (latest?.status) {
+    badge.textContent = latest.status.toLowerCase();
+    badge.style.display = '';
+    const cls = latest.status === 'BALANCED' ? 'badge-balanced'
+              : latest.status === 'UNBALANCED' ? 'badge-unbalanced' : 'badge-low';
+    badge.className = `card-badge ${cls}`;
+  }
+
+  const baselineLow = latest?.baseline_low;
+  const baselineHigh = latest?.baseline_high;
+  if (baselineLow && baselineHigh) {
+    document.getElementById('hrv-baseline').textContent =
+      `baseline: ${Math.round(baselineLow)}–${Math.round(baselineHigh)} ms`;
+  }
+
+  if (chartHrv) chartHrv.destroy();
+
+  chartHrv = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: hrv.map(r => fmtDate(r.date)),
+      datasets: [
+        {
+          label: 'HRV',
+          data: hrv.map(r => r.last_night ? Math.round(r.last_night) : null),
+          borderColor: '#f59e0b',
+          backgroundColor: 'rgba(245,158,11,0.1)',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          borderWidth: 2,
+          spanGaps: true,
+        },
+        // Baseline band — upper edge
+        {
+          label: 'Baseline high',
+          data: hrv.map(() => baselineHigh ?? null),
+          borderColor: 'rgba(90,100,130,0.5)',
+          borderDash: [4, 4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: '-1',
+          backgroundColor: 'rgba(90,100,130,0.06)',
+        },
+        // Baseline band — lower edge
+        {
+          label: 'Baseline low',
+          data: hrv.map(() => baselineLow ?? null),
+          borderColor: 'rgba(90,100,130,0.5)',
+          borderDash: [4, 4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => `HRV: ${ctx.parsed.y} ms` }
+      }},
+      scales: {
+        y: {
+          grid: { color: '#2a3044' },
+          ticks: { callback: v => `${v}` },
+        },
+        x: {
+          grid: { display: false },
+          ticks: { maxTicksLimit: 6, maxRotation: 0 }
+        }
+      }
+    }
+  });
+}
+
+// ── Steps chart ──────────────────────────────────────────────────────────────
+let chartSteps = null;
+function renderStepsChart(summary) {
+  const ctx = document.getElementById('chart-steps').getContext('2d');
+  const week = [...(summary?.week ?? [])].reverse();
+  if (!week.length) return;
+
+  const avg = summary?.averages?.steps;
+  if (avg) {
+    document.getElementById('steps-avg').textContent = `avg ${avg.toLocaleString()}`;
+  }
+
+  if (chartSteps) chartSteps.destroy();
+
+  chartSteps = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: week.map(r => fmtDate(r.date)),
+      datasets: [
+        {
+          data: week.map(r => r.steps ?? 0),
+          backgroundColor: week.map(r =>
+            (r.steps ?? 0) >= 10000 ? 'rgba(31,168,118,0.7)' : 'rgba(59,130,246,0.6)'
+          ),
+          borderColor: 'transparent',
+          borderRadius: 4,
+        },
+        {
+          type: 'line',
+          data: week.map(() => 10000),
+          borderColor: 'rgba(90,100,130,0.5)',
+          borderDash: [4, 4],
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          grid: { color: '#2a3044' },
+          ticks: { callback: v => v >= 1000 ? `${v/1000}k` : v },
+        },
+        x: { grid: { display: false }, ticks: { maxRotation: 0 } }
+      }
+    }
+  });
+}
+
+// ── Activities ────────────────────────────────────────────────────────────────
+function renderActivities(activities) {
+  const el = document.getElementById('activity-list');
+  if (!activities?.length) {
+    el.innerHTML = '<div class="empty">no recent activities</div>';
+    return;
+  }
+  el.innerHTML = activities.map(a => {
+    const dist = a.distance_km ? `${a.distance_km} km` : '';
+    const dur = a.duration_minutes ? `${a.duration_minutes} min` : '';
+    const hr = a.avg_hr ? `${a.avg_hr} bpm` : '';
+    const cal = a.calories ? `${a.calories} cal` : '';
+    const stats = [dist, dur, hr, cal].filter(Boolean).join(' · ');
+    return `
+      <div class="activity-item">
+        <div class="activity-icon">${activityIcon(a.type)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="activity-name">${a.name || a.type}</div>
+          <div class="activity-meta">${fmtDate(a.date)}</div>
+        </div>
+        <div class="activity-stats">${stats}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Sync status ───────────────────────────────────────────────────────────────
+function updateSyncStatus(syncLog) {
+  const el = document.getElementById('sync-status');
+  if (!syncLog || syncLog.status === 'never synced') {
+    el.textContent = 'never synced';
+    return;
+  }
+  const ts = syncLog.completed_at ? new Date(syncLog.completed_at + 'Z') : null;
+  if (ts) {
+    const diff = Math.round((Date.now() - ts) / 60000);
+    const label = diff < 1 ? 'just now' : diff < 60 ? `${diff}m ago` : `${Math.round(diff/60)}h ago`;
+    el.textContent = `synced ${label}${syncLog.status === 'error' ? ' ⚠' : ''}`;
+  }
+}
+
+async function triggerSync() {
+  const btn = document.getElementById('sync-btn');
+  btn.disabled = true;
+  btn.textContent = 'syncing...';
+  try {
+    await fetch('/api/sync', { method: 'POST' });
+    // Poll for completion
+    let attempts = 0;
+    const poll = setInterval(async () => {
+      const s = await fetch('/api/sync-status').then(r => r.json());
+      updateSyncStatus(s);
+      if (s.status !== 'running' || ++attempts > 30) {
+        clearInterval(poll);
+        btn.disabled = false;
+        btn.textContent = 'sync now';
+        await loadAll();
+      }
+    }, 2000);
+  } catch {
+    btn.disabled = false;
+    btn.textContent = 'sync now';
+  }
+}
+
+// ── Load all data ─────────────────────────────────────────────────────────────
+async function loadAll() {
+  try {
+    const [summary, sleep, hrv, battery, activities, syncLog] = await Promise.all([
+      fetch('/api/summary?days=7').then(r => r.json()),
+      fetch('/api/sleep?days=1').then(r => r.json()),
+      fetch('/api/hrv?days=30').then(r => r.json()),
+      fetch('/api/body-battery').then(r => r.json()),
+      fetch('/api/activities?limit=5').then(r => r.json()),
+      fetch('/api/sync-status').then(r => r.json()),
+    ]);
+
+    renderMetrics(summary, battery, sleep, hrv);
+    renderSleepStages(sleep);
+    renderBatteryChart(battery);
+    renderHrvChart(hrv);
+    renderStepsChart(summary);
+    renderActivities(activities);
+    updateSyncStatus(syncLog);
+
+    document.getElementById('hdr-dot').style.background = 'var(--green)';
+  } catch (e) {
+    console.error('load failed:', e);
+    document.getElementById('hdr-dot').style.background = 'var(--red)';
+    document.getElementById('sync-status').textContent = 'error loading data';
+  }
+}
+
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000); // refresh every 5 minutes
+</script>
+</body>
+</html>

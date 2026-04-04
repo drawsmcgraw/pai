@@ -1,7 +1,22 @@
+secrets:
+  garmin_credentials:
+    file: ./secrets/garmin.json.age
+  age_key:
+    file: ./secrets/age.key
+
 services:
+  searxng:
+    image: searxng/searxng:latest
+    network_mode: host
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    restart: unless-stopped
+
   tool_service:
     build: ./tool_service
     network_mode: host
+    volumes:
+      - ./data:/data
     restart: unless-stopped
 
   llm_service:
@@ -12,16 +27,27 @@ services:
       - DEFAULT_MODEL=qwen3:14b
     restart: unless-stopped
 
+  health_service:
+    build: ./health_service
+    network_mode: host
+    volumes:
+      - ./data:/data
+    secrets:
+      - garmin_credentials
+      - age_key
+    restart: unless-stopped
+
   orchestrator:
     build: ./orchestrator
     network_mode: host
     environment:
       - LLM_SERVICE_URL=http://localhost:8002
       - TOOL_SERVICE_URL=http://localhost:8003
-      - MODEL_NAME=qwen3:14b
+      - MODEL_NAME=qwen2.5:14b
       - LOCATION=Laurel, MD
-      - SYSTEM_PROMPT=You are Kronk, a helpful home assistant. Be direct and concise. Do not use action text, emotes, or filler expressions like *winks*, *laughs*, or *grins*. Do not use theatrical language. Answer questions factually and helpfully.
+      - SYSTEM_PROMPT=You are Kronk, a helpful home assistant. Be direct and concise. Do not use action text, emotes, or filler expressions like *winks*, *laughs*, or *grins*. Do not use theatrical language. Answer questions factually and helpfully. You have access to real-time tools for weather, web search, and other live data. NEVER fabricate or estimate real-time information such as weather conditions, temperatures, news, or current events. If a tool result is not present in this conversation, you do not have that data — say so plainly and do not answer from training data.
     depends_on:
       - llm_service
       - tool_service
+      - searxng
     restart: unless-stopped
