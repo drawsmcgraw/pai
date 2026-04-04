@@ -1,2 +1,18 @@
 tmp
 input
+
+# Secrets — never commit these
+assistant/secrets/age.key
+assistant/secrets/garmin.json
+assistant/secrets/garmin.json.age
+assistant/secrets/fitbit.json
+assistant/secrets/fitbit.json.age
+assistant/secrets/withings.json
+assistant/secrets/withings.json.age
+
+# Persisted service data
+assistant/data/
+
+# Python
+__pycache__/
+*.pyc
