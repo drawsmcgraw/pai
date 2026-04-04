@@ -11,8 +11,8 @@ MFA: If Garmin requires MFA and you're running interactively, run:
 That will complete the MFA challenge and save the session token.
 """
 
-import json
 import logging
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -20,31 +20,20 @@ from db import get_conn
 
 logger = logging.getLogger(__name__)
 
-ENCRYPTED_CREDS = Path("/run/secrets/garmin_credentials")
-AGE_KEY = Path("/run/secrets/age_key")
-SESSION_FILE = Path("/data/garth_session")
+TOKEN_FILE = Path("/data/garmin_tokens.json")
 
 
 def _load_credentials() -> tuple[str, str]:
-    if not ENCRYPTED_CREDS.exists():
-        raise FileNotFoundError(
-            f"Encrypted credentials not found at {ENCRYPTED_CREDS}. "
-            "Run: age -R secrets/age.key.pub secrets/garmin.json > secrets/garmin.json.age"
+    from infisical import get_secrets
+    secrets = get_secrets()
+    email    = secrets.get("GARMIN_EMAIL")
+    password = secrets.get("GARMIN_PASSWORD")
+    if not email or not password:
+        raise RuntimeError(
+            "GARMIN_EMAIL or GARMIN_PASSWORD not found in Infisical. "
+            "Add them at the configured secret path in your Kronk project."
         )
-    if not AGE_KEY.exists():
-        raise FileNotFoundError(
-            f"age key not found at {AGE_KEY}. "
-            "Run: age-keygen -o secrets/age.key"
-        )
-    import subprocess
-    result = subprocess.run(
-        ["age", "--decrypt", "-i", str(AGE_KEY), str(ENCRYPTED_CREDS)],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"age decryption failed: {result.stderr.decode().strip()}")
-    creds = json.loads(result.stdout)
-    return creds["email"], creds["password"]
+    return email, password
 
 
 def _get_client():
@@ -52,20 +41,10 @@ def _get_client():
 
     email, password = _load_credentials()
     client = Garmin(email, password)
-
-    if SESSION_FILE.exists():
-        try:
-            client.garth.loads(SESSION_FILE.read_text())
-            # Validate by fetching display name — lightweight call
-            client.display_name
-            logger.info("Garmin: using saved session")
-            return client
-        except Exception as e:
-            logger.info(f"Garmin: saved session invalid ({e}), re-authenticating")
-
-    client.login()
-    SESSION_FILE.write_text(client.garth.dumps())
-    logger.info("Garmin: login successful, session saved")
+    # login() will load existing tokens from TOKEN_FILE if present,
+    # do a full auth flow if not, and auto-save tokens back to the file.
+    client.login(tokenstore=str(TOKEN_FILE))
+    logger.info("Garmin: authenticated (tokens at %s)", TOKEN_FILE)
     return client
 
 
@@ -239,10 +218,14 @@ def sync_garmin(days_back: int = 7):
         for i in range(days_back):
             d = (today - timedelta(days=i)).isoformat()
             _sync_daily_summary(client, d)
+            time.sleep(1)
             _sync_sleep(client, d)
+            time.sleep(1)
             _sync_hrv(client, d)
+            time.sleep(1)
 
         _sync_body_battery(client, start.isoformat(), today.isoformat())
+        time.sleep(1)
         _sync_activities(client, start.isoformat(), today.isoformat())
 
         completed_at = datetime.utcnow().isoformat()

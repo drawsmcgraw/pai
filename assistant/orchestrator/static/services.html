@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronk — Services</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:     #0f1117;
+    --bg2:    #171b24;
+    --bg3:    #1e2330;
+    --border: #2a3044;
+    --text:   #e8eaf0;
+    --text2:  #9ba3bc;
+    --text3:  #5c6480;
+    --green:  #1fa876;
+    --blue:   #3b82f6;
+    --amber:  #f59e0b;
+    --red:    #ef4444;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0.9rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .header-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  h1 { font-size: 16px; font-weight: 600; }
+  .subtitle { font-size: 12px; color: var(--text3); margin-left: auto; font-family: monospace; }
+
+  main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text3);
+    margin-bottom: 8px;
+  }
+
+  .service-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .service-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .service-icon {
+    font-size: 20px;
+    width: 32px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .service-info { flex: 1; min-width: 0; }
+
+  .service-name {
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .service-desc {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 2px;
+  }
+
+  .port-badge {
+    font-size: 10px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--text3);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+
+  .internal-badge {
+    font-size: 10px;
+    color: var(--text3);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-style: italic;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text3);
+  }
+  .status-dot.up   { background: var(--green); }
+  .status-dot.down { background: var(--red); }
+
+  .open-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text2);
+    font-size: 12px;
+    padding: 5px 14px;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .open-btn:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-dot"></div>
+  <h1>Services</h1>
+  <span class="subtitle">kronk</span>
+</header>
+
+<main>
+
+  <div>
+    <div class="section-label">Interfaces</div>
+    <div class="service-grid">
+
+      <div class="service-card">
+        <div class="service-icon">💬</div>
+        <div class="service-info">
+          <div class="service-name">
+            Kronk
+            <span class="port-badge">:8000</span>
+            <div class="status-dot" id="s-orchestrator"></div>
+          </div>
+          <div class="service-desc">Main chat interface</div>
+        </div>
+        <a class="open-btn" href="http://kronk.local:8000/" target="_blank">Open</a>
+      </div>
+
+      <div class="service-card">
+        <div class="service-icon">🛒</div>
+        <div class="service-info">
+          <div class="service-name">
+            Shopping List
+            <span class="port-badge">:8000</span>
+          </div>
+          <div class="service-desc">Mobile-friendly shopping list viewer</div>
+        </div>
+        <a class="open-btn" href="http://kronk.local:8000/shopping_list" target="_blank">Open</a>
+      </div>
+
+      <div class="service-card">
+        <div class="service-icon">❤️</div>
+        <div class="service-info">
+          <div class="service-name">
+            Health Dashboard
+            <span class="port-badge">:8004</span>
+            <div class="status-dot" id="s-health"></div>
+          </div>
+          <div class="service-desc">Garmin health data — sleep, HRV, body battery, activities</div>
+        </div>
+        <a class="open-btn" href="http://kronk.local:8004/" target="_blank">Open</a>
+      </div>
+
+      <div class="service-card">
+        <div class="service-icon">🔍</div>
+        <div class="service-info">
+          <div class="service-name">
+            SearXNG
+            <span class="port-badge">:8080</span>
+            <div class="status-dot" id="s-searxng"></div>
+          </div>
+          <div class="service-desc">Self-hosted meta-search — queries never leave the house</div>
+        </div>
+        <a class="open-btn" href="http://kronk.local:8080/" target="_blank">Open</a>
+      </div>
+
+      <div class="service-card">
+        <div class="service-icon">🔐</div>
+        <div class="service-info">
+          <div class="service-name">
+            Infisical
+            <span class="port-badge">:8200</span>
+            <div class="status-dot" id="s-infisical"></div>
+          </div>
+          <div class="service-desc">Secrets management — credentials for all services</div>
+        </div>
+        <a class="open-btn" href="http://kronk.local:8200/" target="_blank">Open</a>
+      </div>
+
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Internal Services</div>
+    <div class="service-grid">
+
+      <div class="service-card">
+        <div class="service-icon">🤖</div>
+        <div class="service-info">
+          <div class="service-name">
+            LLM Service
+            <span class="port-badge">:8002</span>
+            <div class="status-dot" id="s-llm"></div>
+          </div>
+          <div class="service-desc">Ollama wrapper — streams tokens to the orchestrator</div>
+        </div>
+        <span class="internal-badge">internal</span>
+      </div>
+
+      <div class="service-card">
+        <div class="service-icon">🛠️</div>
+        <div class="service-info">
+          <div class="service-name">
+            Tool Service
+            <span class="port-badge">:8003</span>
+            <div class="status-dot" id="s-tools"></div>
+          </div>
+          <div class="service-desc">Weather (NWS), web search, URL fetch, shopping list API</div>
+        </div>
+        <span class="internal-badge">internal</span>
+      </div>
+
+      <div class="service-card">
+        <div class="service-icon">🦙</div>
+        <div class="service-info">
+          <div class="service-name">
+            Ollama
+            <span class="port-badge">:11434</span>
+            <div class="status-dot" id="s-ollama"></div>
+          </div>
+          <div class="service-desc">Local LLM runtime — runs on host, GPU-accelerated via ROCm</div>
+        </div>
+        <span class="internal-badge">host service</span>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const checks = [
+    { id: 's-orchestrator', url: 'http://kronk.local:8000/health' },
+    { id: 's-health',       url: 'http://kronk.local:8004/health' },
+    { id: 's-searxng',      url: 'http://kronk.local:8080/healthz' },
+    { id: 's-infisical',    url: 'http://kronk.local:8200/api/status' },
+    { id: 's-llm',          url: 'http://kronk.local:8002/health' },
+    { id: 's-tools',        url: 'http://kronk.local:8003/health' },
+    { id: 's-ollama',       url: 'http://kronk.local:11434/api/version' },
+  ];
+
+  async function checkAll() {
+    await Promise.allSettled(checks.map(async ({ id, url }) => {
+      const dot = document.getElementById(id);
+      if (!dot) return;
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        dot.classList.toggle('up',   r.ok);
+        dot.classList.toggle('down', !r.ok);
+      } catch {
+        dot.classList.add('down');
+        dot.classList.remove('up');
+      }
+    }));
+  }
+
+  checkAll();
+  setInterval(checkAll, 30000);
+</script>
+</body>
+</html>

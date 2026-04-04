@@ -144,6 +144,12 @@ async def root():
         return f.read()
 
 
+@app.get("/services", response_class=HTMLResponse)
+async def services():
+    with open("/app/static/services.html") as f:
+        return f.read()
+
+
 @app.post("/message")
 async def message(req: MessageRequest):
     history.append({"role": "user", "content": req.text})

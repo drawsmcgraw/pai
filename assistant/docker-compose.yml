@@ -1,10 +1,52 @@
 secrets:
-  garmin_credentials:
-    file: ./secrets/garmin.json.age
-  age_key:
-    file: ./secrets/age.key
+  infisical_client_id:
+    file: ./secrets/infisical_client_id
+  infisical_client_secret:
+    file: ./secrets/infisical_client_secret
 
 services:
+  nginx:
+    image: nginx:alpine
+    network_mode: host
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    network_mode: host
+    environment:
+      - POSTGRES_DB=infisical
+      - POSTGRES_USER=infisical
+      - POSTGRES_PASSWORD=TVETJPoV8BdsUmk_3IwNCA
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    command: redis-server --bind 127.0.0.1 --port 6379
+    restart: unless-stopped
+
+  infisical:
+    image: infisical/infisical:latest-postgres
+    network_mode: host
+    environment:
+      - NODE_ENV=production
+      - PORT=8200
+      - SITE_URL=http://kronk.local:8200
+      - ENCRYPTION_KEY=7be012f2e4c94aed8e978b3f51e3aa0a
+      - AUTH_SECRET=rJ2IPTu1pAaDb6jLH-x_goHoHjvtjG_CZPK89KHLt-k
+      - DB_CONNECTION_URI=postgresql://infisical:TVETJPoV8BdsUmk_3IwNCA@localhost:5432/infisical
+      - REDIS_URL=redis://localhost:6379
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
   searxng:
     image: searxng/searxng:latest
     network_mode: host
@@ -32,9 +74,16 @@ services:
     network_mode: host
     volumes:
       - ./data:/data
+    environment:
+      - INFISICAL_URL=http://localhost:8200
+      - INFISICAL_PROJECT_ID=3ea88c4c-b560-40a8-b7e4-f1d2879f7ae3
+      - INFISICAL_ENVIRONMENT=prod
+      - INFISICAL_SECRET_PATH=/
     secrets:
-      - garmin_credentials
-      - age_key
+      - infisical_client_id
+      - infisical_client_secret
+    depends_on:
+      - infisical
     restart: unless-stopped
 
   orchestrator:

@@ -1,6 +1,6 @@
 # Kronk AI Server — Build Notes & Model Analysis
 
-**Last updated:** 2026-04-03 (supply chain hardening)
+**Last updated:** 2026-04-03 (health service, Infisical, Garmin auth)
 **Machine:** Framework AMD Ryzen AI 375 (hostname: kronk)
 **GPU:** Radeon 8060S (GFX1151) — integrated GPU
 **RAM:** 122 GB
@@ -80,10 +80,17 @@ We initially tried using Docker's `host-gateway` feature to let containers reach
 Tradeoff: `network_mode: host` only works on Linux (not Mac/Windows Docker Desktop). Fine for this machine, worth noting if the stack ever moves.
 
 ### Service design
-- **llm_service** (port 8002): thin Ollama wrapper. Translates the orchestrator's message format into Ollama's API format and streams tokens back as SSE. Keeping this separate means swapping out the LLM backend only touches this service.
+- **nginx** (port 80): reverse proxy in front of the orchestrator. Required `proxy_buffering off` to pass SSE tokens through without buffering.
 - **orchestrator** (port 8000): manages conversation history, serves the UI, owns all routing logic and tool calls.
+- **llm_service** (port 8002): thin Ollama wrapper. Translates the orchestrator's message format into Ollama's API format and streams tokens back as SSE. Keeping this separate means swapping out the LLM backend only touches this service.
 - **tool_service** (port 8003): external API integrations — weather, web search, URL fetch, shopping list.
+- **health_service** (port 8004): Garmin Connect sync service with SQLite persistence and health dashboard.
 - **searxng** (port 8080): self-hosted meta-search engine. Used by tool_service for web search queries.
+- **infisical** (port 8200): self-hosted secrets manager (postgres + redis backed). All service credentials are stored here.
+
+### Services directory page
+
+A `/services` page is served by the orchestrator, listing all services with status indicators (green/red dots) that ping each service's health endpoint every 30 seconds. Provides clickable links to all web UIs from one place. Built with the same dark theme as the main chat interface.
 
 ### Tool integration pattern
 Tool calls use rule-based intent detection (regex keyword matching) in the orchestrator rather than LLM-driven function calling. This avoids model capability variance — not all models handle function calling consistently, and adding an LLM round-trip just to decide which tool to call adds latency with no benefit when the intent patterns are straightforward. The orchestrator detects intent, calls the tool, injects the result as a system message, then sends the full context to the LLM. The model's job is only to format the response.
@@ -280,22 +287,71 @@ If 14B feels slow in daily use, llama3.1:8b is the best smaller option. Meta bui
 
 ---
 
-## Supply Chain Security
+## Health Service
 
-### The threat model
+### Garmin Connect sync
 
-A supply chain attack on a Python project works like this: a malicious package (either a typosquat, a compromised legitimate package, or a malicious transitive dependency) runs arbitrary code at install time or import time. The litellm incident demonstrated that such packages actively scrape `os.environ` and the filesystem for credentials, then exfiltrate them over HTTP.
+`health_service` polls Garmin Connect every 24 hours (APScheduler BackgroundScheduler inside FastAPI) and stores the results in a local SQLite database at `/data/health.db`. Tables: `daily_summary`, `sleep`, `hrv`, `body_battery`, `activities`, `sync_log`.
 
-The naive setup — credentials in environment variables, `pip install -r requirements.txt` — is fully vulnerable. Any package in the dependency tree can steal everything.
+The sync is split into per-day calls with `time.sleep(1)` between each one to avoid triggering Garmin's rate limiting.
 
-### Defense 1: Dependency hash pinning (highest leverage)
+### Dashboard
 
-This stops the attack before any code runs. Every dependency is pinned to an exact content hash. If a malicious actor swaps in a compromised version of a package, the hash won't match and the install fails.
+A Chart.js dashboard at `http://kronk.local:8004` displays:
+- Metric strip: steps with goal bar, sleep duration, body battery, resting HR, HRV
+- Body battery curve (line chart)
+- Sleep stages breakdown (stacked CSS bar)
+- HRV 30-day trend with baseline band
+- 7-day steps bar chart
+- Recent activities list
 
-**How it works:**
-- `requirements.txt` lists direct dependencies with loose version constraints (human-maintained)
-- `requirements.lock` is machine-generated and contains every resolved transitive dependency with SHA-256 hashes of the exact distributions
-- Docker builds install from the lockfile with `--require-hashes`, which fails if any hash mismatches
+Auto-refreshes every 5 minutes.
+
+### Garmin authentication
+
+Garmin authentication is non-trivial. Key lessons:
+
+**The garth-based auth flow is dead.** The `garminconnect` library underwent a major breaking change — the old garth/OAuth/cookie login no longer works. The library now authenticates using the same mobile SSO flow as the official Garmin Connect Android app, obtaining DI OAuth Bearer tokens. The token format changed from garth's session string to `garmin_tokens.json`. Upgrading from an old pinned version to `>=0.2.25` is required.
+
+**`curl_cffi` is essential.** The library has a strategy chain for login: portal web flow (preferred) → mobile SSO. The portal web flow uses `curl_cffi` to impersonate a real Chrome TLS fingerprint. The library's own comment: *"This is the endpoint connect.garmin.com itself uses, so Cloudflare cannot block it without breaking their own website."* Without `curl_cffi`, it falls back to plain `requests` which Cloudflare fingerprints and 429s. Add `curl_cffi>=0.7.0` to requirements.
+
+**Cloudflare 429 on initial auth.** The SSO login flow makes ~8-10 HTTP requests in rapid succession. On a fresh IP or after several failed attempts, Cloudflare rate-limits the IP. Retry with exponential backoff (30s → 60s → 120s → 240s) via `setup_auth.py`.
+
+**Session persistence survives container rebuilds.** The token file lives at `/data/garmin_tokens.json`, a host volume mount. The `login(tokenstore=path)` API handles load-existing / full-auth / auto-save in one call. No restart needed after initial auth.
+
+**MFA blocks unattended auth.** If the Garmin account has MFA enabled, initial authentication is interactive and cannot be done in a background job. Ongoing syncs work fine once the token is saved — the DI refresh token handles renewal without re-authentication.
+
+**Auth is done in a separate one-shot container.** `docker-compose.setup-auth.yml` defines a `garmin_setup` service using the health_service image with a different entrypoint. Keeps the host clean.
+
+```bash
+docker compose -f docker-compose.setup-auth.yml run --rm garmin_setup
+```
+
+---
+
+## Secrets and Dependency Management
+
+### Secrets: Infisical
+
+All application credentials are stored in a self-hosted Infisical instance (postgres + redis backend, port 8200). Secrets never leave the home network.
+
+Each service authenticates to Infisical using a machine identity with read-only access scoped to only the secrets it needs. The machine identity client ID + client secret are stored as Docker secrets (files in `./secrets/`, mounted at `/run/secrets/` inside the container) — never in environment variables.
+
+**Why Infisical over simpler approaches:** It scales cleanly to multiple services, provides audit logging, and centralizes secret rotation. Each service gets a scoped machine identity; adding a new service is just creating a new identity in the UI.
+
+**Why the REST API over the Infisical SDK:** The official `infisical-sdk` uses pyo3 Rust bindings — harder to audit, platform-specific wheels complicate lockfile generation. The REST API is 4 lines with httpx (already a dependency), implemented directly in `infisical.py`.
+
+**Flow:** client ID + client secret → POST `/api/v1/auth/universal-auth/login` → short-lived access token → GET `/api/v3/secrets/raw` → dict of key/value pairs. The access token is never persisted.
+
+**`.gitignore`:** The `./secrets/` directory is gitignored. If credentials are accidentally committed, rotate them immediately.
+
+### Dependencies: hash pinning
+
+Every dependency is pinned to an exact SHA-256 content hash. If a package is tampered with or swapped, the hash won't match and the build fails.
+
+- `requirements.txt` — direct dependencies, human-maintained
+- `requirements.lock` — machine-generated, every transitive dependency with hashes
+- Docker builds install with `uv pip install --require-hashes -r requirements.lock`
 
 **Generating / updating lockfiles:**
 ```bash
@@ -304,50 +360,18 @@ docker run --rm -v ./tool_service:/svc python:3.12-slim \
   bash -c "pip install uv -q && uv pip compile /svc/requirements.txt --generate-hashes -o /svc/requirements.lock"
 ```
 
-Repeat for each service directory. Commit the lockfile. When you update a direct dependency in `requirements.txt`, regenerate the lockfile.
-
-**Why this is the primary defense:** An attacker can't substitute a package because the hash won't match. They would need to compromise PyPI's distribution infrastructure itself, not just upload a malicious package.
-
-### Defense 2: age encryption for credentials at rest
-
-Docker secrets (mounting a file at `/run/secrets/`) are better than environment variables for container inspection and accidental logging, but they do not protect against a malicious package that actively reads files. The path `/run/secrets/` is well-known; any code running in the container can open and read it.
-
-`age` is a small, audited encryption tool. The credentials file on disk is ciphertext. A filesystem scraper gets an encrypted blob — useless without the key. The plaintext only ever exists in memory, for the duration of the sync call.
-
-**Key architecture:**
-- `secrets/garmin.json.age` — encrypted credentials (ciphertext, mounted as Docker secret)
-- `secrets/age.key` — age private key (mounted as separate Docker secret)
-- The two files are only useful together; separating them at different paths raises the bar for an attacker who needs to find and correlate both
-
-**Why not passphrase-based age?** Passphrase encryption requires an interactive prompt on every container start. Not practical for an automated sync service. A key file stored with restricted permissions (`chmod 600`) is the right tradeoff for a home server.
-
-### What this does NOT fully protect against
-
-If a malicious package runs inside the container after the application has already decrypted credentials into memory (e.g., stored in a Python variable), a sufficiently advanced attack could read `/proc/self/mem` or use other process-introspection techniques to find the plaintext. Full protection against this class of attack requires process isolation that Python cannot provide.
-
-The realistic defense is: hash pinning prevents the malicious package from being installed. Encryption at rest limits damage if the package somehow runs anyway (e.g., via a 0-day in the package resolution). The combination is appropriate for a home server threat model.
-
-### Maintaining the lockfiles
-
-Lockfiles go stale when you update dependencies. The workflow:
-1. Edit `requirements.txt` with the new/updated dependency
-2. Regenerate the lockfile with the docker command above
-3. Rebuild the container — `--require-hashes` will verify the new lockfile
-4. Commit both `requirements.txt` and `requirements.lock`
-
-Never edit the lockfile by hand. Never skip the lockfile and install from `requirements.txt` directly in production.
-
-### .gitignore
-
-The `secrets/` directory is in `.gitignore`. The age key and both plaintext and encrypted credential files must never be committed. If they are accidentally committed, rotate the credentials immediately.
+Repeat for each service directory. When updating a direct dependency, regenerate the lockfile and commit both files. Never edit the lockfile by hand.
 
 ---
 
 ## What's Still on the Table
 
+- **Garmin MFA / initial auth** — MFA on the Garmin account blocks unattended first-time authentication. Need an interactive path (run setup_auth.py while present) to get the initial token saved, after which syncs are silent. The Cloudflare 429 rate limit on initial auth is a separate issue — requires waiting ~90 minutes between attempts.
 - **Agentic loop (Option B)** — The current regex intent detection is a stepping stone. The intended architecture is an LLM-driven agentic loop where the model decides which tools to call and can chain them. The regex approach was built first to get something working; the tool set is now stable enough to justify the upgrade.
+- **Health data in Kronk** — Once the Garmin sync is operational, expose health data as a tool so Kronk can answer questions like "how did I sleep last night?" and "what's my HRV trend this week?"
 - **Query routing** — route simple/fast queries to a small model, complex ones to a larger one; architecture already supports this via the `model` override on `/message`
 - **Quantization** — a Q2/Q3 version of llama3.3:70b would be ~25-30 GB and might fit in GPU at 100% while retaining more quality than 14B models
 - **Voice pipeline** — STT (Whisper.cpp), TTS (Piper), wake word (openWakeWord); stubbed in the current UI
 - **More tools** — Philips Hue, calendar, home automation
+- **Additional health sources** — Fitbit (for a family member), Withings scale; Infisical machine identities are already the right pattern for adding new service credentials
 - **External shopping list** — publish the shopping list page externally (GitHub Pages / Cloudflare Pages) so it's accessible without being on the home network

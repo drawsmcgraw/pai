@@ -1,0 +1,23 @@
+secrets:
+  infisical_client_id:
+    file: ./secrets/infisical_client_id
+  infisical_client_secret:
+    file: ./secrets/infisical_client_secret
+
+services:
+  garmin_setup:
+    build: ./health_service
+    network_mode: host
+    volumes:
+      - ./data:/data
+    environment:
+      - INFISICAL_URL=http://localhost:8200
+      - INFISICAL_PROJECT_ID=3ea88c4c-b560-40a8-b7e4-f1d2879f7ae3
+      - INFISICAL_ENVIRONMENT=prod
+      - INFISICAL_SECRET_PATH=/
+    secrets:
+      - infisical_client_id
+      - infisical_client_secret
+    entrypoint: ["python", "setup_auth.py"]
+    stdin_open: true
+    tty: true
