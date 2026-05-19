@@ -33,11 +33,6 @@ These will be specific to the time of year. For example, in election season, we 
 ### Events
 Search the notes I provide you as well as the site https://www.marylandforwardparty.com/get-involved for events coming up in the next 6-8 weeks. Do not include committee meetings because the audience is people who are not yet party members.
 
-### Volunteer Spotlight
-I will provide you with the name and a blurb. If I do not, then stub it out.
-
-
-
 ### Legislative Updates
 Include any and all legislative updates in here.
 
@@ -51,6 +46,8 @@ For other information, search through the meeting notes and generate a section (
 
 Each committee has an update. Find their update and insert the updates as a section.
 
+### MD Board Updates
+The notes from the board meetings will include a section titled "for the newsletter". Reference the material mentioned in that section when pulling material from the meetings for the newsletter. Do not pull any other information from the board meetings. Only use what is mentioned in that section titled "for the newsletter".
 
 ### Candidates
 I will provide you with a spreadsheet called "Endorsement Process Tracking" (or similar), which tracks candidates the party is endorsing. This spreadsheet is cumulative, so old announcements will be in there. Only write about candidates that have had the "social media announcement" done for the target month (for example, if you're writing for the May newsletter, include candidates that were announced in May). When writing about candidates include:
@@ -58,3 +55,9 @@ I will provide you with a spreadsheet called "Endorsement Process Tracking" (or 
 * Their office (also from the spreadsheet)
 
 Also reference https://www.marylandforwardparty.com/candidates for further information. This page includes 1) links to the candidate's page and 2) a link to the MD FWD Party web page where more information is available. You should pull both links and include those links in your writing about them. Include some notes about their platform and why they're running so they don't sound boring.  Reference the markdown file party-endorsement-rules-of-engagement.md for further information when writing about candidates.
+
+### Volunteer Spotlight
+I will provide you with the name and a blurb. If I do not, then stub it out.
+
+### Volunteer / Donate Call to Action
+End each newsletter with a call to action to volunteer, donate, and get involved. Link to https://www.marylandforwardparty.com/get-involved in this section.
