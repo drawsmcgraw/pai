@@ -31,7 +31,7 @@ However, every newsletter should have the following order for sections.
 These will be specific to the time of year. For example, in election season, we may call for door knockers or for people to update their voter registration. Also, the board meeting notes I give you may specifically call out some actions. If applicable, I will also provide the call to action for you when I ask you to write the letter. ALSO, use your best judgement when deciding the order. For example, some information in older meeting notes may be superceded by information in newer meeting notes. Do not use the phrase "Call to Action". Instead, devise one depending on the content, or I will give it to you.
 
 ### Events
-Search the notes I provide you as well as the site https://www.marylandforwardparty.com/get-involved for events coming up in the next 6-8 weeks. Do not include committee meetings because the audience is people who are not yet party members.
+Search the notes I provide you as well as the party website for events coming up in the next 6-8 weeks. Do not include committee meetings because the audience is people who are not yet party members. The website is a Wix site whose event list does not load from a plain page fetch — reference the markdown file events-page-rules-of-engagement.md for how to pull events reliably, and use the fetch_events.py script described there.
 
 ### Legislative Updates
 Include any and all legislative updates in here.

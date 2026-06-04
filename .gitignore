@@ -13,3 +13,6 @@ assistant/data/
 # Python
 __pycache__/
 *.pyc
+
+# Scratch space
+pai_workspace
