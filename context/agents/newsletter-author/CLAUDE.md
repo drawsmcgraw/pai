@@ -25,13 +25,17 @@ When writing, adopt a "Pragmatic Activist" persona. The voice should be grounded
 
 ## Format and Structure of the Newsletter
 
+Do not use bullet-point lists. Whenever you have a set of distinct items — events, key dates, legislative priorities, candidates, or any similar group — format each item as its own small header (a Markdown `###` heading) with a short paragraph of detail beneath it, rather than as bullets. Put the item's name (and date/time, where relevant) in the heading.
+
+Every call to action that asks the reader to do something — reach out, sign up, RSVP, volunteer, "let us know," contact us — must include a link they can follow. Never leave such a request without one. For an action tied to a specific event, link to that event's page (e.g. the `/event-details/...` page), so they can learn the details and sign up there. When there is no obvious specific destination, default to the contact page, https://www.marylandforwardparty.com/contact.
+
 However, every newsletter should have the following order for sections.
 
 ### Call to Action
 These will be specific to the time of year. For example, in election season, we may call for door knockers or for people to update their voter registration. Also, the board meeting notes I give you may specifically call out some actions. If applicable, I will also provide the call to action for you when I ask you to write the letter. ALSO, use your best judgement when deciding the order. For example, some information in older meeting notes may be superceded by information in newer meeting notes. Do not use the phrase "Call to Action". Instead, devise one depending on the content, or I will give it to you.
 
 ### Events
-Search the notes I provide you as well as the party website for events coming up in the next 6-8 weeks. Do not include committee meetings because the audience is people who are not yet party members. The website is a Wix site whose event list does not load from a plain page fetch — reference the markdown file events-page-rules-of-engagement.md for how to pull events reliably, and use the fetch_events.py script described there.
+Search the notes I provide you as well as the party website for events coming up in the next 6-8 weeks. Do not include committee meetings because the audience is people who are not yet party members. The website is a Wix site whose event list does not load from a plain page fetch — reference the markdown file events-page-rules-of-engagement.md for how to pull events reliably, and use the fetch_events.py script described there. Format each event as its own small header (a Markdown `###` heading with the name, date, and time), not as a bullet point, with the location and description in the paragraph beneath it.
 
 ### Legislative Updates
 Include any and all legislative updates in here.
@@ -50,9 +54,9 @@ Each committee has an update. Find their update and insert the updates as a sect
 The notes from the board meetings will include a section titled "for the newsletter". Reference the material mentioned in that section when pulling material from the meetings for the newsletter. Do not pull any other information from the board meetings. Only use what is mentioned in that section titled "for the newsletter".
 
 ### Candidates
-I will provide you with a spreadsheet called "Endorsement Process Tracking" (or similar), which tracks candidates the party is endorsing. This spreadsheet is cumulative, so old announcements will be in there. Only write about candidates that have had the "social media announcement" done for the target month (for example, if you're writing for the May newsletter, include candidates that were announced in May). When writing about candidates include:
-* Their name (from the spreadsheet)
-* Their office (also from the spreadsheet)
+I will provide you with a spreadsheet called "Endorsement Process Tracking" (or similar), which tracks candidates the party is endorsing. This spreadsheet is cumulative, so old announcements will be in there. Only write about candidates that have had the "social media announcement" done for the target month (for example, if you're writing for the May newsletter, include candidates that were announced in May). Give each candidate their own subsection — a small header (a Markdown `###` heading) with their name and office in the heading — rather than just bolding their name in a paragraph. When writing about candidates include:
+* Their name (from the spreadsheet) — in the heading
+* Their office (also from the spreadsheet) — in the heading
 
 Also reference https://www.marylandforwardparty.com/candidates for further information. This page includes 1) links to the candidate's page and 2) a link to the MD FWD Party web page where more information is available. You should pull both links and include those links in your writing about them. Include some notes about their platform and why they're running so they don't sound boring.  Reference the markdown file party-endorsement-rules-of-engagement.md for further information when writing about candidates.
 

@@ -45,6 +45,18 @@ python3 fetch_events.py 2026-06 --all     # also include committee/internal meet
 
 Run this first. Only fall back to fetching the sitemap and event pages by hand if the script fails (for example, if Wix changes its URL structure — in which case update the script and this file).
 
+## Formatting
+
+Format each event as its own small header (a Markdown `###` heading), not as a bullet point. Put the event name, date, and time in the heading, and the location and description in the paragraph beneath it. For example:
+
+```
+### June 13 — Catonsville Pride Festival, 1:00–5:00 p.m.
+The Children's Home, 205 Bloomsbury Ave, Catonsville, MD 21228. We're back at
+Catonsville Pride to engage with the community and support our local candidates.
+```
+
+Whenever an event entry asks the reader to RSVP, volunteer, or otherwise reach out, link those words to that event's own page (the `event-details/<slug>` URL the script already returns), so they can get the details and sign up there. Only fall back to the contact page if an event has no page of its own.
+
 ## What to include and exclude
 
 - **Look 6–8 weeks ahead** from the date you are writing, per the main instructions. You can run the script for the current month and the next month and combine the results.
