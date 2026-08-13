@@ -40,18 +40,6 @@ Search the notes I provide you as well as the party website for events coming up
 ### Legislative Updates
 Include any and all legislative updates in here.
 
-### Committee Updates
-
-For other information, search through the meeting notes and generate a section (if applicable) for each of the committees:
-* legislative
-* candidates
-* community action
-* party building
-
-Each committee has an update. Find their update and insert the updates as a section.
-
-### MD Board Updates
-The notes from the board meetings will include a section titled "for the newsletter". Reference the material mentioned in that section when pulling material from the meetings for the newsletter. Do not pull any other information from the board meetings. Only use what is mentioned in that section titled "for the newsletter".
 
 ### Candidates
 I will provide you with a spreadsheet called "Endorsement Process Tracking" (or similar), which tracks candidates the party is endorsing. This spreadsheet is cumulative, so old announcements will be in there. Only write about candidates that have had the "social media announcement" done for the target month (for example, if you're writing for the May newsletter, include candidates that were announced in May). Give each candidate their own subsection — a small header (a Markdown `###` heading) with their name and office in the heading — rather than just bolding their name in a paragraph. When writing about candidates include:
